@@ -1,154 +1,215 @@
-const {
-    default: makeWASocket,
-    DisconnectReason,
-    useMultiFileAuthState,
+// ========================================
+// 🎤 INDEX.JS - SOLUCIÓN FINAL PARA BAILEYS 7.0.0-rc.9
+// ========================================
+const { 
+    default: makeWASocket, 
+    useMultiFileAuthState, 
+    DisconnectReason, 
     fetchLatestBaileysVersion,
-    isJidBroadcast,
-    makeCacheableSignalKeyStore
+    Browsers,
+    downloadMediaMessage
 } = require('@whiskeysockets/baileys');
-const pino = require('pino');
-const qrcode = require('qrcode-terminal');
-const { Boom } = require('@hapi/boom');
+const qrcodeTerminal = require('qrcode-terminal');
 const fs = require('fs');
-const fetch = require('node-fetch');
+const path = require('path');
+const axios = require('axios');
+const pino = require('pino');
+const express = require('express');
+const { Boom } = require('@hapi/boom');
+require('dotenv').config();
 
-// ⚠️ REEMPLAZAR CON LA URL DE SU AGENTE EN RENDER ⚠️
-const RENDER_WEBHOOK_URL = 'https://agentv1-0-citasconcal-com-premium-version.onrender.com/webhook/whatsapp'; 
+// Inicializar Express
+const app = express();
+app.use(express.json());
 
-// Función principal para conectar con WhatsApp
-async function connectWhatsApp() {
-    // Usar un logger pino para mejor manejo de logs
-    const logger = pino({ level: 'silent' });
-    
-    // Cargar el estado de autenticación (sesión)
-    const { state, saveCreds } = await useMultiFileAuthState('auth_info_baileys');
-    
-    // Obtener la última versión de Baileys
-    const { version, isLatest } = await fetchLatestBaileysVersion();
-    console.log(`Usando Baileys versión: ${version.join('.')}`);
+// Logger
+const logger = pino({ level: 'info' });
 
-    // Crear la instancia del socket de WhatsApp
-    const sock = makeWASocket({
-        version,
-        logger,
-        // ✅ REMOVIDO: printQRInTerminal (deprecado)
-        // Ahora manejamos el QR manualmente en connection.update
-        auth: {
-            creds: state.creds,
-            keys: makeCacheableSignalKeyStore(state.keys, logger),
-        },
-        browser: ['Whatsapp Bridge', 'Chrome', '1.0.0'], // Identificador del navegador
-        getMessage: async (key) => {
-            // Función para obtener mensajes anteriores (opcional)
-            return { conversation: 'Mensaje anterior' };
+// Configuración
+const WEBHOOK_URL = process.env.WEBHOOK_URL || 'https://agentv1-0-citasconcal-com-premium-version.onrender.com/webhook/whatsapp';
+const AUTH_DIR = path.join(__dirname, 'auth_info_baileys');
+const PORT = process.env.PORT || 3000;
+
+// Crear directorio de autenticación si no existe
+if (!fs.existsSync(AUTH_DIR)) {
+    fs.mkdirSync(AUTH_DIR, { recursive: true });
+}
+
+let sock; // Variable global para el socket
+
+// ========================================
+// FUNCIÓN PARA DESCARGAR AUDIO
+// ========================================
+async function downloadAudio(msg) {
+    try {
+        logger.info("📥 Descargando archivo de audio...");
+        const mediaBuffer = await downloadMediaMessage(
+            msg,
+            'buffer',
+            {},
+            { logger: pino({ level: 'silent' }) }
+        );
+        return mediaBuffer;
+    } catch (error) {
+        logger.error(`❌ Error descargando audio: ${error.message}`);
+        throw error;
+    }
+}
+
+// ========================================
+// FUNCIÓN PARA ENVIAR AUDIO A RENDER
+// ========================================
+async function sendAudioToRender(audioBuffer, from, audioMessage) {
+    try {
+        logger.info("🌐 Enviando audio a Render para transcripción...");
+        const audioBase64 = audioBuffer.toString('base64');
+        
+        const payload = {
+            message: '',
+            sender: from,
+            platform: 'whatsapp',
+            isVoiceMessage: true,
+            audio: audioBase64,
+            audio_mimetype: audioMessage.mimetype || 'audio/ogg'
+        };
+        
+        const response = await axios.post(WEBHOOK_URL, payload, {
+            timeout: 60000,
+            headers: { 'Content-Type': 'application/json' }
+        });
+        
+        const agentResponse = response.data.response || 'Sin respuesta del agente';
+        await sock.sendMessage(from, { text: agentResponse });
+    } catch (error) {
+        logger.error(`❌ Error enviando audio a Render: ${error.message}`);
+        await sock.sendMessage(from, { 
+            text: "🤔 Lo siento, no pude procesar tu mensaje de voz."
+        });
+    }
+}
+
+// ========================================
+// ENDPOINT PARA ENVIAR MENSAJES (Para Render/n8n)
+// ========================================
+// ENDPOINT PARA ENVIAR MENSAJES (Limpio y Dinámico) Ajustado para multimedia) 4-30-26
+// ========================================
+
+app.post('/send-message', async (req, res) => {
+    const { number, message, to, isImage } = req.body;
+    const phoneNumber = to || number;
+
+    if (!phoneNumber || !message) {
+        return res.status(400).json({ error: 'Faltan parámetros' });
+    }
+
+    try {
+        const jid = phoneNumber.includes('@s.whatsapp.net') ? phoneNumber : `${phoneNumber}@s.whatsapp.net`;
+        const urlString = String(message).toLowerCase();
+
+        // 1. 🎥 DETECTAR SI ES VIDEO (.mp4)
+        if (urlString.includes('.mp4') || urlString.includes('video')) {
+            logger.info(`🎥 Enviando VIDEO limpio a ${phoneNumber}...`);
+            await sock.sendMessage(jid, { 
+                video: { url: message } // Enviamos solo el video, sin caption
+            });
+        } 
+        // 2. 📸 DETECTAR SI ES IMAGEN
+        else if (isImage === true || isImage === "true" || urlString.includes('.png') || urlString.includes('.jpg')) {
+            logger.info(`📸 Enviando IMAGEN limpia a ${phoneNumber}...`);
+            await sock.sendMessage(jid, { 
+                image: { url: message } // Enviamos solo la imagen, sin caption
+            });
+        } 
+        // 3. ✉️ TEXTO NORMAL
+        else {
+            await sock.sendMessage(jid, { text: message });
         }
+
+        res.json({ status: 'success', to: jid });
+    } catch (error) {
+        logger.error(`❌ Error: ${error.message}`);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+
+// ========================================
+// FUNCIÓN PRINCIPAL DE CONEXIÓN
+// ========================================
+async function startWhatsAppBot() {
+    const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
+    const { version } = await fetchLatestBaileysVersion();
+
+    sock = makeWASocket({
+        auth: state,
+        version,
+        browser: Browsers.macOS('Chrome'),
+        printQRInTerminal: false,
+        logger: pino({ level: 'silent' })
     });
 
-    // Guardar credenciales de sesión cada vez que se actualizan
     sock.ev.on('creds.update', saveCreds);
 
-    // Manejar eventos de conexión
     sock.ev.on('connection.update', (update) => {
         const { connection, lastDisconnect, qr } = update;
-        
-        // ✅ NUEVO: Manejar el QR manualmente
+
         if (qr) {
-            console.log('\n📱 Escanea este código QR con tu teléfono:\n');
-            qrcode.generate(qr, { small: true });
-            console.log('\n');
+            console.log('📱 Escanea este código QR:');
+            qrcodeTerminal.generate(qr, { small: true });
         }
-        
+
         if (connection === 'close') {
-            let reason = new Boom(lastDisconnect?.error)?.output?.statusCode;
-            if (reason === DisconnectReason.badSession) {
-                console.log(`❌ Sesión incorrecta. Por favor, elimine la carpeta 'auth_info_baileys' y escanee el QR de nuevo.`);
-                process.exit(1);
-            } else if (reason === DisconnectReason.connectionClosed) {
-                console.log("⚠️ Conexión cerrada, reconectando...");
-                connectWhatsApp();
-            } else if (reason === DisconnectReason.connectionLost) {
-                console.log("⚠️ Conexión perdida, reconectando...");
-                connectWhatsApp();
-            } else if (reason === DisconnectReason.loggedOut) {
-                console.log(`❌ Dispositivo desconectado. Por favor, elimine la carpeta 'auth_info_baileys' y escanee el QR de nuevo.`);
-                process.exit(1);
-            } else if (reason === DisconnectReason.restartRequired) {
-                console.log("🔄 Reinicio requerido, reconectando...");
-                connectWhatsApp();
-            } else if (reason === DisconnectReason.timedOut) {
-                console.log("⏱️ Tiempo de espera agotado, reconectando...");
-                connectWhatsApp();
-            } else {
-                console.log(`❓ Razón de desconexión desconocida: ${reason}. Reconectando...`);
-                connectWhatsApp();
+            const statusCode = new Boom(lastDisconnect?.error)?.output?.statusCode;
+            const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
+            if (shouldReconnect) {
+                console.log('🔄 Reconectando...');
+                setTimeout(startWhatsAppBot, 3000);
             }
         } else if (connection === 'open') {
             console.log('✅ Conexión con WhatsApp establecida con éxito.');
         }
     });
 
-    // Manejar mensajes entrantes
     sock.ev.on('messages.upsert', async (m) => {
         const msg = m.messages[0];
-        
-        // Ignorar mensajes de estado, broadcast o del propio bot
-        if (!msg.message || isJidBroadcast(msg.key.remoteJid) || msg.key.fromMe) return;
+        if (!msg.message || msg.key.fromMe) return;
 
-        // Extraer el texto del mensaje
-        let messageText = msg.message.conversation || 
-                         msg.message.extendedTextMessage?.text || 
-                         msg.message.imageMessage?.caption || 
-                         msg.message.videoMessage?.caption || '';
-        
-        // Si el mensaje es de voz, puede que necesite un paso adicional de transcripción
-        if (msg.message.audioMessage) {
-            messageText = "Mensaje de voz recibido. Por favor, envíe un mensaje de texto."; // Simplificación
-            // ⚠️ Nota: La transcripción de voz requiere librerías adicionales (ej: Whisper API)
-        }
-
-        // Si no hay texto, ignorar
-        if (!messageText) return;
-
-        const senderJid = msg.key.remoteJid;
-        console.log(`\n📨 Mensaje de ${senderJid}: ${messageText}`);
+        const from = msg.key.remoteJid;
+        if (from.includes('@g.us')) return;
 
         try {
-            // 1. Enviar el mensaje al webhook de Render
-            console.log(`🌐 Enviando a Render: ${RENDER_WEBHOOK_URL}`);
-            const response = await fetch(RENDER_WEBHOOK_URL, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    message: messageText,
-                    sender: senderJid,
-                    platform: 'whatsapp' // Identificador de plataforma
-                })
-            });
-
-            // 2. Recibir la respuesta del agente de IA
-            if (!response.ok) {
-                throw new Error(`Error HTTP: ${response.status} - ${response.statusText}`);
+            if (msg.message?.audioMessage) {
+                const audioBuffer = await downloadAudio(msg);
+                await sendAudioToRender(audioBuffer, from, msg.message.audioMessage);
+                return;
             }
+
+            const messageBody = msg.message?.conversation || 
+                               msg.message?.extendedTextMessage?.text || '';
             
-            const result = await response.json();
-            const agentResponseText = result.response || "Lo siento, no pude obtener una respuesta de mi agente de IA.";
+            if (!messageBody) return;
 
-            console.log(`🤖 Respuesta del Agente: ${agentResponseText}`);
-
-            // 3. Enviar la respuesta de vuelta a WhatsApp
-            await sock.sendMessage(senderJid, { text: agentResponseText });
-            console.log(`✅ Respuesta enviada a ${senderJid}\n`);
+            const payload = { message: messageBody, sender: from, platform: 'whatsapp' };
+            const response = await axios.post(WEBHOOK_URL, payload, { timeout: 30000 });
+            const agentResponse = response.data.response || 'No entendí tu mensaje.';
+            await sock.sendMessage(from, { text: agentResponse });
 
         } catch (error) {
-            console.error(`❌ Error en el flujo de mensaje: ${error.message}`);
-            // Enviar un mensaje de error al usuario
-            await sock.sendMessage(senderJid, { text: "Lo siento, hubo un error al procesar tu solicitud. Por favor, inténtalo de nuevo más tarde." });
+            logger.error(`❌ Error procesando mensaje: ${error.message}`);
         }
     });
 }
 
-// Iniciar la conexión
-connectWhatsApp().catch(err => {
-    console.error('❌ Error al conectar:', err);
-    process.exit(1);
+// Iniciar Servidor Web
+app.listen(PORT, '0.0.0.0', () => {
+    console.log(`\n=================================================`);
+    console.log(`🚀 SERVIDOR WEB BAILEYS INICIADO`);
+    console.log(`📡 Puerto: ${PORT}`);
+    console.log(`🔗 URL de envío: http://localhost:${PORT}/send-message`);
+    console.log(`=================================================\n`);
+}).on('error', (err) => {
+    console.error('❌ ERROR AL INICIAR EL SERVIDOR WEB:', err.message);
 });
+
+// Iniciar Bot
+startWhatsAppBot().catch(err => console.error('❌ Error fatal:', err));

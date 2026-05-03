@@ -1,0 +1,3 @@
+[dotenv@17.2.3] injecting env (5) from .env -- tip: ⚙️  specify custom .env file path with { path: '/custom/path/.env' }
+{"level":30,"time":1770086408440,"pid":9854,"hostname":"DESKTOP-0B5JNVP","msg":"🚀 Iniciando WhatsApp Bot..."}
+{"level":50,"time":1770086412011,"pid":9854,"hostname":"DESKTOP-0B5JNVP","msg":"❌ Conexión cerrada: Connection Failure"}
