@@ -1,9 +1,10 @@
 {
   "name": "whatsapp-bridge",
   "version": "1.0.0",
-  "description": "WhatsApp Bridge project with Baileys fixed for Render",
+  "description": "WhatsApp Bridge project with Baileys fixed for Render with anti-cache patch",
   "main": "index.js",
   "scripts": {
+    "postinstall": "node patch-hoek.js",
     "start": "node index.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
