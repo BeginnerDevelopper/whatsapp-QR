@@ -15,7 +15,7 @@ const path = require('path');
 const axios = require('axios');
 const pino = require('pino');
 const express = require('express');
-const { Boom } = require('@hapi/boom');
+//const { Boom } = require('@hapi/boom');
 require('dotenv').config();
 
 // Inicializar Express
@@ -159,7 +159,8 @@ async function startWhatsAppBot() {
         }
 
         if (connection === 'close') {
-            const statusCode = new Boom(lastDisconnect?.error)?.output?.statusCode;
+            //const statusCode = new Boom(lastDisconnect?.error)?.output?.statusCode;
+            const statusCode = lastDisconnect?.error?.output?.statusCode; //new 5-23-26
             const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
             if (shouldReconnect) {
                 console.log('🔄 Reconectando...');

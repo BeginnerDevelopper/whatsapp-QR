@@ -11,7 +11,6 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "@hapi/boom": "^10.0.1",
     "@whiskeysockets/baileys": "6.6.0",
     "axios": "^1.15.2",
     "dotenv": "^17.4.2",
