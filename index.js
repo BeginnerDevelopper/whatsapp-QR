@@ -70,8 +70,6 @@ module.exports = class extends Error {
 }
 
 applyEmergencyPatches();
-const fs = require('fs');
-const path = require('path');
 
 console.log('--- 🛠️ PARCHE RENDER: Reparando @hapi/hoek... ---');
 
