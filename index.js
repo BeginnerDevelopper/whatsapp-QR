@@ -27,46 +27,7 @@ module.exports = class extends Error {
         }
     } catch (e) {}
 
-    // --- PARCHE 2: WHATWG-URL (MongoDB Fix) ---
-    try {
-        const whatwgPath = path.join(process.cwd(), 'node_modules', 'whatwg-url');
-        const indexJsPath = path.join(whatwgPath, 'index.js');
-        const packageJsonPath = path.join(whatwgPath, 'package.json');const libDir = path.join(whatwgPath, 'lib');
-        const publicApiPath = path.join(libDir, 'public-api.js');
 
-        if (!fs.existsSync(whatwgPath)) { fs.mkdirSync(whatwgPath, { recursive: true }); }
-
-        // Asegurar que el package.json de whatwg-url sea válido
-        if (!fs.existsSync(packageJsonPath)) {
-            fs.writeFileSync(packageJsonPath, JSON.stringify({ name: "whatwg-url", main: "index.js", version: "11.0.0" }));
-        }
-
-        // Asegurar que el index.js de whatwg-url exista (redirección a lib/public-api.js)
-        if (!fs.existsSync(indexJsPath)) {
-            console.log('--- 🛠️ PARCHE RENDER: Reparando whatwg-url (MongoDB)... ---');
-            const content = "module.exports = require('./lib/public-api.js');";
-            fs.writeFileSync(indexJsPath, content);
-        }
-        if (!fs.existsSync(libDir)) {
-    fs.mkdirSync(libDir, { recursive: true });
-        }
-
-        if (!fs.existsSync(publicApiPath)) {
-            const publicApiContent = `
-        class URL {
-            constructor(url) {
-                this.href = url;
-            }
-        }
-
-        module.exports = {
-            URL
-        };
-        `;
-            fs.writeFileSync(publicApiPath, publicApiContent);
-        }
-
-    } catch (e) {}
 }
 
 applyEmergencyPatches();
