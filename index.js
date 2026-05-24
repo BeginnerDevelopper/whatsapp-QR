@@ -1,50 +1,72 @@
-// ========================================
-// 🎤 INDEX.JS - SOLUCIÓN FINAL CON MONGODB ATLAS
-// ========================================
+// ==========================================================================
+// 🛡️ PARCHE DE EMERGENCIA PARA RENDER (AUTO-REPARACIÓN DE @HAPI/HOEK)
+// ==========================================================================
+const fs = require('fs');
+const path = require('path');
+
+function applyEmergencyPatch() {
+    try {
+        const hoekLibPath = path.join(process.cwd(), 'node_modules', '@hapi', 'hoek', 'lib');
+        const errorJsPath = path.join(hoekLibPath, 'error.js');
+        const errorJsContent = `'use strict';
+const Stringify = require('./stringify');
+const internals = {};
+module.exports = class extends Error {
+    constructor(args) {
+        const msgs = args
+            .filter((arg) => arg !== '')
+            .map((arg) => {
+                return typeof arg === 'string' ? arg : arg instanceof Error ? arg.message : Stringify(arg);
+            });
+        super(msgs.join(' ') || 'Unknown error');
+        if (typeof Error.captureStackTrace === 'function') {
+            Error.captureStackTrace(this, exports.assert);
+        }
+    }
+};`;
+        if (!fs.existsSync(hoekLibPath)) { fs.mkdirSync(hoekLibPath, { recursive: true }); }
+        if (!fs.existsSync(errorJsPath)) {
+            console.log('--- 🛠️ PARCHE RENDER: Creando archivo faltante error.js... ---');
+            fs.writeFileSync(errorJsPath, errorJsContent);
+        }
+    } catch (err) { console.error('--- ❌ ERROR EN PARCHE: ---', err); }
+}
+applyEmergencyPatch();
+
+// ==========================================================================
+// 🎤 INICIO DEL CÓDIGO PRINCIPAL
+// ==========================================================================
 const { 
     default: makeWASocket, 
     DisconnectReason, 
-   fetchLatestBaileysVersion,
+    fetchLatestBaileysVersion,
     Browsers,
     downloadMediaMessage,
-    BufferJSON // Importante para manejar datos binarios
+    BufferJSON 
 } = require('@whiskeysockets/baileys');
 const qrcodeTerminal = require('qrcode-terminal');
-const fs = require('fs');
-const path = require('path');
 const axios = require('axios');
 const pino = require('pino');
 const express = require('express');
-const { MongoClient } = require('mongodb'); // Nuevo: MongoDB
-const useMongoDBAuthState = require('./mongo_auth'); // Nuevo: Adaptador Mongo
+const { MongoClient } = require('mongodb');
+const useMongoDBAuthState = require('./mongo_auth'); 
 require('dotenv').config();
 
-// Inicializar Express
 const app = express();
 app.use(express.json());
-
-// Logger
 const logger = pino({ level: 'info' });
 
-// Configuración
+// Configuración de Variables de Entorno
 const WEBHOOK_URL = process.env.WEBHOOK_URL || 'https://agentv1-0-citasconcal-com-premium-version.onrender.com/webhook/whatsapp';
 const PORT = process.env.PORT || 3000;
-const MONGODB_URL = process.env.MONGODB_URL || process.env.MONGO_URI; // Asegúrate de tener esto en tu .env o Render
+const MONGODB_URL = process.env.MONGODB_URL || process.env.MONGO_URI; // Soporta ambos nombres
 
 let sock; 
 
-// ========================================
-// FUNCIÓN PARA DESCARGAR AUDIO
-// ========================================
+// Función para descargar audio
 async function downloadAudio(msg) {
     try {
-        logger.info("📥 Descargando archivo de audio...");
-        const mediaBuffer = await downloadMediaMessage(
-            msg,
-            'buffer',
-            {},
-            { logger: pino({ level: 'silent' }) }
-        );
+        const mediaBuffer = await downloadMediaMessage(msg, 'buffer', {}, { logger: pino({ level: 'silent' }) });
         return mediaBuffer;
     } catch (error) {
         logger.error(`❌ Error descargando audio: ${error.message}`);
@@ -52,89 +74,60 @@ async function downloadAudio(msg) {
     }
 }
 
-// ========================================
-// FUNCIÓN PARA ENVIAR AUDIO A RENDER
-// ========================================
+// Función para enviar audio a Render
 async function sendAudioToRender(audioBuffer, from, audioMessage) {
     try {
-        logger.info("🌐 Enviando audio a Render para transcripción...");
         const audioBase64 = audioBuffer.toString('base64');
-        
         const payload = {
-            message: '',
-            sender: from,
-            platform: 'whatsapp',
-            isVoiceMessage: true,
-            audio: audioBase64,
+            message: '', sender: from, platform: 'whatsapp',
+            isVoiceMessage: true, audio: audioBase64,
             audio_mimetype: audioMessage.mimetype || 'audio/ogg'
         };
-        
-        const response = await axios.post(WEBHOOK_URL, payload, {
-            timeout: 60000,
-            headers: { 'Content-Type': 'application/json' }
-        });
-        
+        const response = await axios.post(WEBHOOK_URL, payload, { timeout: 60000 });
         const agentResponse = response.data.response || 'Sin respuesta del agente';
         await sock.sendMessage(from, { text: agentResponse });
     } catch (error) {
-        logger.error(`❌ Error enviando audio a Render: ${error.message}`);
-        await sock.sendMessage(from, { 
-            text: "🤔 Lo siento, no pude procesar tu mensaje de voz."
-        });
+        logger.error(`❌ Error enviando audio: ${error.message}`);
     }
 }
 
-// ========================================
-// ENDPOINT PARA ENVIAR MENSAJES
-// ========================================
+// Endpoint para enviar mensajes
 app.post('/send-message', async (req, res) => {
     const { number, message, to, isImage } = req.body;
     const phoneNumber = to || number;
-
-    if (!phoneNumber || !message) {
-        return res.status(400).json({ error: 'Faltan parámetros' });
-    }
+    if (!phoneNumber || !message) return res.status(400).json({ error: 'Faltan parámetros' });
 
     try {
         const jid = phoneNumber.includes('@s.whatsapp.net') ? phoneNumber : `${phoneNumber}@s.whatsapp.net`;
         const urlString = String(message).toLowerCase();
 
         if (urlString.includes('.mp4') || urlString.includes('video')) {
-            logger.info(`🎥 Enviando VIDEO limpio a ${phoneNumber}...`);
             await sock.sendMessage(jid, { video: { url: message } });
-        } 
-        else if (isImage === true || isImage === "true" || urlString.includes('.png') || urlString.includes('.jpg')) {
-            logger.info(`📸 Enviando IMAGEN limpia a ${phoneNumber}...`);
+        } else if (isImage === true || isImage === "true" || urlString.includes('.png') || urlString.includes('.jpg')) {
             await sock.sendMessage(jid, { image: { url: message } });
-        } 
-        else {
+        } else {
             await sock.sendMessage(jid, { text: message });
         }
-
         res.json({ status: 'success', to: jid });
     } catch (error) {
-        logger.error(`❌ Error: ${error.message}`);
         res.status(500).json({ error: error.message });
     }
 });
 
-// ========================================
-// FUNCIÓN PRINCIPAL DE CONEXIÓN (CON MONGODB)
-// ========================================
+// Función de conexión principal
 async function startWhatsAppBot() {
-    // 1. Inicializar MongoDB
     if (!MONGODB_URL) {
-        throw new Error("❌ MONGODB_URL no está configurada o no se encontro revisa en tu archivo .env.");
+        console.error("❌ ERROR: No se encontró MONGODB_URL ni MONGO_URI en el entorno.");
+        process.exit(1);
     }
+
     const client = new MongoClient(MONGODB_URL);
     await client.connect();
-    const db = client.db('whatsapp_bridge'); // Nombre de la DB
-    const collection = db.collection('auth_session'); // Colección de sesión
+    const db = client.db('whatsapp_bridge');
+    const collection = db.collection('auth_session');
 
-    // 2. Usar el adaptador de MongoDB
     const { state, saveCreds } = useMongoDBAuthState(collection);
     
-    // Cargar credenciales iniciales desde Mongo si existen
     const credsData = await collection.findOne({ _id: 'creds' });
     if (credsData) {
         state.creds = JSON.parse(credsData.data, BufferJSON.reviver);
@@ -150,43 +143,31 @@ async function startWhatsAppBot() {
         logger: pino({ level: 'silent' })
     });
 
-    // 3. Guardar credenciales en Mongo
     sock.ev.on('creds.update', async () => {
-        await saveCreds(); // Llamada estándar de Baileys
-        // Forzamos el guardado de 'creds' específicamente en nuestra colección
         const jsonStr = JSON.stringify(state.creds, BufferJSON.replacer);
-        await collection.updateOne(
-            { _id: 'creds' },
-            { $set: { data: jsonStr } },
-            { upsert: true }
-        );
+        await collection.updateOne({ _id: 'creds' }, { $set: { data: jsonStr } }, { upsert: true });
     });
 
     sock.ev.on('connection.update', (update) => {
         const { connection, lastDisconnect, qr } = update;
-
         if (qr) {
             console.log('📱 Escanea este código QR:');
             qrcodeTerminal.generate(qr, { small: true });
         }
-
         if (connection === 'close') {
             const statusCode = lastDisconnect?.error?.output?.statusCode;
-            const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
-            console.log(`--- CONEXIÓN CERRADA --- Razón: ${lastDisconnect?.error}`);
-            if (shouldReconnect) {
+            if (statusCode !== DisconnectReason.loggedOut) {
                 console.log('🔄 Reconectando...');
                 setTimeout(startWhatsAppBot, 3000);
             }
         } else if (connection === 'open') {
-            console.log('✅ Conexión con WhatsApp establecida con éxito (Persistente en Mongo).');
+            console.log('✅ Conexión establecida y persistente en MongoDB.');
         }
     });
 
     sock.ev.on('messages.upsert', async (m) => {
         const msg = m.messages[0];
         if (!msg.message || msg.key.fromMe) return;
-
         const from = msg.key.remoteJid;
         if (from.includes('@g.us')) return;
 
@@ -196,30 +177,20 @@ async function startWhatsAppBot() {
                 await sendAudioToRender(audioBuffer, from, msg.message.audioMessage);
                 return;
             }
-
-            const messageBody = msg.message?.conversation || 
-                               msg.message?.extendedTextMessage?.text || '';
-            
+            const messageBody = msg.message?.conversation || msg.message?.extendedTextMessage?.text || '';
             if (!messageBody) return;
-
             const payload = { message: messageBody, sender: from, platform: 'whatsapp' };
             const response = await axios.post(WEBHOOK_URL, payload, { timeout: 30000 });
             const agentResponse = response.data.response || 'No entendí tu mensaje.';
             await sock.sendMessage(from, { text: agentResponse });
-
         } catch (error) {
-            logger.error(`❌ Error procesando mensaje: ${error.message}`);
+            logger.error(`❌ Error en mensaje: ${error.message}`);
         }
     });
 }
 
-// Iniciar Servidor Web
 app.listen(PORT, '0.0.0.0', () => {
-    console.log(`\n=================================================`);
-    console.log(`🚀 SERVIDOR WEB BAILEYS + MONGODB INICIADO`);
-    console.log(`📡 Puerto: ${PORT}`);
-    console.log(`=================================================\n`);
+    console.log(`🚀 Servidor en puerto ${PORT}`);
 });
 
-// Iniciar Bot
 startWhatsAppBot().catch(err => console.error('❌ Error fatal:', err));
