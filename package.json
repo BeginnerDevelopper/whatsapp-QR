@@ -4,13 +4,15 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "start": "node mongoconexion.js",
+    "start": "node index.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@hapi/boom": "^10.0.1",
+    "@hapi/hoek": "^9.3.0",
     "@whiskeysockets/baileys": "6.6.0",
     "axios": "^1.15.2",
     "dotenv": "^17.4.2",
