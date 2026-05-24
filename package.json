@@ -12,10 +12,11 @@
   "license": "ISC",
   "dependencies": {
     "@hapi/boom": "^10.0.1",
-    "axios": "^1.15.2",
     "@whiskeysockets/baileys": "6.6.0",
+    "axios": "^1.15.2",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
+    "lru-cache": "^6.0.0",
     "mongodb": "^7.2.0",
     "node-fetch": "^2.7.0",
     "pino": "^10.3.1",
@@ -25,5 +26,4 @@
   "engines": {
     "node": "20.x"
   }
-  
 }
