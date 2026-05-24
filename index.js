@@ -5,7 +5,6 @@
 const fs = require('fs');
 const path = require('path');
 
-
 function applyEmergencyPatches() {
     // --- PARCHE 1: @HAPI/HOEK ---
     try {
@@ -27,12 +26,44 @@ module.exports = class extends Error {
         }
     } catch (e) {}
 
+// --- PARCHE WHATWG-URL ---
+try {
+    const whatwgPath = path.join(process.cwd(), 'node_modules', 'whatwg-url');
+
+    const packageJsonPath = path.join(whatwgPath, 'package.json');
+    const indexJsPath = path.join(whatwgPath, 'index.js');
+
+    if (!fs.existsSync(whatwgPath)) {
+        fs.mkdirSync(whatwgPath, { recursive: true });
+    }
+
+    // package.json
+    if (!fs.existsSync(packageJsonPath)) {
+        fs.writeFileSync(packageJsonPath, JSON.stringify({
+            name: "whatwg-url",
+            main: "index.js",
+            version: "11.0.0"
+        }, null, 2));
+    }
+
+    // index.js
+    if (!fs.existsSync(indexJsPath)) {
+        console.log('--- 🛠️ Reparando whatwg-url... ---');
+
+        fs.writeFileSync(
+            indexJsPath,
+            "module.exports = require('./webidl2js-wrapper.js');"
+        );
+    }
+
+} catch (err) {
+    console.error('❌ Error reparando whatwg-url:', err);
+}    
+
 
 }
 
 applyEmergencyPatches();
-
-
 
 console.log('--- 🛠️ PARCHE RENDER: Reparando @hapi/hoek... ---');
 
