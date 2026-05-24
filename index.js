@@ -1,75 +1,36 @@
 // ==========================================================================
-// 🛡️ PARCHE DE EMERGENCIA DE DOBLE ACCIÓN PARA RENDER
-// Repara @hapi/hoek y whatwg-url (dependencia de MongoDB)
+// 🚀 PARCHE DE INTERCEPCIÓN TOTAL (SOLUCIÓN DEFINITIVA PARA RENDER)
 // ==========================================================================
-const fs = require('fs');
-const path = require('path');
+const Module = require('module');
+const originalRequire = Module.prototype.require;
 
-function applyEmergencyPatches() {
-    // --- PARCHE 1: @HAPI/HOEK ---
-    try {
-        const hoekLibPath = path.join(process.cwd(), 'node_modules', '@hapi', 'hoek', 'lib');
-        const errorJsPath = path.join(hoekLibPath, 'error.js');
-        if (!fs.existsSync(hoekLibPath)) { fs.mkdirSync(hoekLibPath, { recursive: true }); }
-        if (!fs.existsSync(errorJsPath)) {
-            const content = `'use strict';
-const Stringify = require('./stringify');
-module.exports = class extends Error {
-    constructor(args) {
-        const msgs = args.filter((arg) => arg !== '').map((arg) => typeof arg === 'string' ? arg : arg instanceof Error ? arg.message : Stringify(arg));
-        super(msgs.join(' ') || 'Unknown error');
-        if (typeof Error.captureStackTrace === 'function') { Error.captureStackTrace(this, exports.assert); }
+Module.prototype.require = function (id) {
+    if (id === './error' && this.filename.includes('@hapi/hoek')) {
+        return class extends Error {
+            constructor(args) {
+                super(Array.isArray(args) ? args.join(' ') : args || 'Unknown error');
+            }
+        };
     }
-};`;
-            console.log('--- 🛠️ PARCHE RENDER: Reparando @hapi/hoek... ---');
-            fs.writeFileSync(errorJsPath, content);
+    if (id === 'whatwg-url' || id.includes('whatwg-url')) {
+        try {
+            return originalRequire.apply(this, arguments);
+        } catch (e) {
+            const { URL, URLSearchParams } = require('url');
+            return {
+                URL,
+                URLSearchParams,
+                parseURL: (input) => { try { return new URL(input); } catch(e) { return null; } },
+                serializeURL: (url) => url.toString()
+            };
         }
-    } catch (e) {}
-
-// --- PARCHE WHATWG-URL ---
-try {
-    const whatwgPath = path.join(process.cwd(), 'node_modules', 'whatwg-url');
-
-    const packageJsonPath = path.join(whatwgPath, 'package.json');
-    const indexJsPath = path.join(whatwgPath, 'index.js');
-
-    if (!fs.existsSync(whatwgPath)) {
-        fs.mkdirSync(whatwgPath, { recursive: true });
     }
-
-    // package.json
-    if (!fs.existsSync(packageJsonPath)) {
-        fs.writeFileSync(packageJsonPath, JSON.stringify({
-            name: "whatwg-url",
-            main: "index.js",
-            version: "11.0.0"
-        }, null, 2));
-    }
-
-    // index.js
-    if (!fs.existsSync(indexJsPath)) {
-        console.log('--- 🛠️ Reparando whatwg-url... ---');
-
-        fs.writeFileSync(
-            indexJsPath,
-            "module.exports = require('./webidl2js-wrapper.js');"
-        );
-    }
-
-} catch (err) {
-    console.error('❌ Error reparando whatwg-url:', err);
-}    
-
-
-}
-
-applyEmergencyPatches();
-
-console.log('--- 🛠️ PARCHE RENDER: Reparando @hapi/hoek... ---');
-
+    return originalRequire.apply(this, arguments);
+};
+console.log('--- 🛡️ SISTEMA DE INTERCEPCIÓN ACTIVO ---');
 
 // ==========================================================================
-// 🎤 INICIO DEL CÓDIGO PRINCIPAL
+// 🎤 CÓDIGO PRINCIPAL (WhatsApp Bridge)
 // ==========================================================================
 const { 
     default: makeWASocket, 
@@ -91,72 +52,19 @@ const app = express();
 app.use(express.json());
 const logger = pino({ level: 'info' });
 
-// Configuración de Variables de Entorno
 const WEBHOOK_URL = process.env.WEBHOOK_URL || 'https://agentv1-0-citasconcal-com-premium-version.onrender.com/webhook/whatsapp';
 const PORT = process.env.PORT || 3000;
-const MONGO_URI = process.env.MONGODB_URL || process.env.MONGO_URI; // Soporta ambos nombres
+const MONGODB_URL = process.env.MONGODB_URL || process.env.MONGO_URI;
 
 let sock; 
 
-// Función para descargar audio
-async function downloadAudio(msg) {
-    try {
-        const mediaBuffer = await downloadMediaMessage(msg, 'buffer', {}, { logger: pino({ level: 'silent' }) });
-        return mediaBuffer;
-    } catch (error) {
-        logger.error(`❌ Error descargando audio: ${error.message}`);
-        throw error;
-    }
-}
-
-// Función para enviar audio a Render
-async function sendAudioToRender(audioBuffer, from, audioMessage) {
-    try {
-        const audioBase64 = audioBuffer.toString('base64');
-        const payload = {
-            message: '', sender: from, platform: 'whatsapp',
-            isVoiceMessage: true, audio: audioBase64,
-            audio_mimetype: audioMessage.mimetype || 'audio/ogg'
-        };
-        const response = await axios.post(WEBHOOK_URL, payload, { timeout: 60000 });
-        const agentResponse = response.data.response || 'Sin respuesta del agente';
-        await sock.sendMessage(from, { text: agentResponse });
-    } catch (error) {
-        logger.error(`❌ Error enviando audio: ${error.message}`);
-    }
-}
-
-// Endpoint para enviar mensajes
-app.post('/send-message', async (req, res) => {
-    const { number, message, to, isImage } = req.body;
-    const phoneNumber = to || number;
-    if (!phoneNumber || !message) return res.status(400).json({ error: 'Faltan parámetros' });
-
-    try {
-        const jid = phoneNumber.includes('@s.whatsapp.net') ? phoneNumber : `${phoneNumber}@s.whatsapp.net`;
-        const urlString = String(message).toLowerCase();
-
-        if (urlString.includes('.mp4') || urlString.includes('video')) {
-            await sock.sendMessage(jid, { video: { url: message } });
-        } else if (isImage === true || isImage === "true" || urlString.includes('.png') || urlString.includes('.jpg')) {
-            await sock.sendMessage(jid, { image: { url: message } });
-        } else {
-            await sock.sendMessage(jid, { text: message });
-        }
-        res.json({ status: 'success', to: jid });
-    } catch (error) {
-        res.status(500).json({ error: error.message });
-    }
-});
-
-// Función de conexión principal
 async function startWhatsAppBot() {
-    if (!MONGO_URI) {
-        console.error("❌ ERROR: No se encontró MONGODB_URL ni MONGO_URI en el entorno.");
+    if (!MONGODB_URL) {
+        console.error("❌ ERROR: No se encontró MONGODB_URL ni MONGO_URI.");
         process.exit(1);
     }
 
-    const client = new MongoClient(MONGO_URI);
+    const client = new MongoClient(MONGODB_URL);
     await client.connect();
     const db = client.db('whatsapp_bridge');
     const collection = db.collection('auth_session');
@@ -196,7 +104,7 @@ async function startWhatsAppBot() {
                 setTimeout(startWhatsAppBot, 3000);
             }
         } else if (connection === 'open') {
-            console.log('✅ Conexión establecida y persistente en MongoDB.');
+            console.log('✅ Conexión establecida con éxito.');
         }
     });
 
@@ -208,8 +116,16 @@ async function startWhatsAppBot() {
 
         try {
             if (msg.message?.audioMessage) {
-                const audioBuffer = await downloadAudio(msg);
-                await sendAudioToRender(audioBuffer, from, msg.message.audioMessage);
+                const audioBuffer = await downloadMediaMessage(msg, 'buffer', {}, { logger: pino({ level: 'silent' }) });
+                const audioBase64 = audioBuffer.toString('base64');
+                const payload = {
+                    message: '', sender: from, platform: 'whatsapp',
+                    isVoiceMessage: true, audio: audioBase64,
+                    audio_mimetype: msg.message.audioMessage.mimetype || 'audio/ogg'
+                };
+                const response = await axios.post(WEBHOOK_URL, payload, { timeout: 60000 });
+                const agentResponse = response.data.response || 'Sin respuesta.';
+                await sock.sendMessage(from, { text: agentResponse });
                 return;
             }
             const messageBody = msg.message?.conversation || msg.message?.extendedTextMessage?.text || '';
