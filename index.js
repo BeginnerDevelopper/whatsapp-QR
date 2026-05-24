@@ -159,12 +159,12 @@ app.post('/send-message', async (req, res) => {
 
 // Función de conexión principal
 async function startWhatsAppBot() {
-    if (!MONGODB_URL) {
-        console.error("❌ ERROR: No se encontró MONGODB_URL ni MONGO_URI en el entorno.");
-        process.exit(1);
+    if(!MONGO_URI) {
+        throw new Error('❌ MONGO_URI no definido en Render');
     }
 
-    const client = new MongoClient(MONGODB_URL);
+
+    const client = new MongoClient(MONGO_URI);
     await client.connect();
     const db = client.db('whatsapp_bridge');
     const collection = db.collection('auth_session');
