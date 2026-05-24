@@ -4,8 +4,7 @@
 // ==========================================================================
 const fs = require('fs');
 const path = require('path');
-const libDir = path.join(whatwgPath, 'lib');
-const publicApiPath = path.join(libDir, 'public-api.js');
+
 
 function applyEmergencyPatches() {
     // --- PARCHE 1: @HAPI/HOEK ---
@@ -32,7 +31,8 @@ module.exports = class extends Error {
     try {
         const whatwgPath = path.join(process.cwd(), 'node_modules', 'whatwg-url');
         const indexJsPath = path.join(whatwgPath, 'index.js');
-        const packageJsonPath = path.join(whatwgPath, 'package.json');
+        const packageJsonPath = path.join(whatwgPath, 'package.json');const libDir = path.join(whatwgPath, 'lib');
+        const publicApiPath = path.join(libDir, 'public-api.js');
 
         if (!fs.existsSync(whatwgPath)) { fs.mkdirSync(whatwgPath, { recursive: true }); }
 
@@ -70,6 +70,8 @@ module.exports = class extends Error {
 }
 
 applyEmergencyPatches();
+
+
 
 console.log('--- 🛠️ PARCHE RENDER: Reparando @hapi/hoek... ---');
 
