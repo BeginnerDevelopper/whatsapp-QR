@@ -1,7 +1,7 @@
 {
   "name": "whatsapp-bridge",
   "version": "1.0.0",
-  "description": "",
+  "description": "WhatsApp Bridge project with Baileys fixed for Render",
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
@@ -11,8 +11,8 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "@hapi/boom": "^10.0.1",
-    "@hapi/hoek": "^9.3.0",
+    "@hapi/boom": "9.1.4",
+    "@hapi/hoek": "9.3.0",
     "@whiskeysockets/baileys": "6.6.0",
     "axios": "^1.15.2",
     "dotenv": "^17.4.2",
@@ -23,6 +23,10 @@
     "pino": "^10.3.1",
     "qrcode": "^1.5.4",
     "qrcode-terminal": "^0.12.0"
+  },
+  "overrides": {
+    "@hapi/boom": "9.1.4",
+    "@hapi/hoek": "9.3.0"
   },
   "engines": {
     "node": "20.20.2"
