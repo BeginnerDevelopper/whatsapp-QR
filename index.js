@@ -140,8 +140,13 @@ async function startWhatsAppBot() {
     });
 }
 
+// Iniciar Servidor Web PRIMERO para que Render esté feliz
 app.listen(PORT, '0.0.0.0', () => {
-    console.log(`🚀 Servidor en puerto ${PORT}`);
+    console.log(`🚀 Servidor web activo en puerto ${PORT}`);
+    
+    // Una vez que el servidor web está listo, arrancamos el bot
+    startWhatsAppBot().catch(err => {
+        console.error('❌ Error al iniciar el bot:', err.message);
+        // No cerramos el proceso para que el servidor web siga vivo y Render no lo mate
+    });
 });
-
-startWhatsAppBot().catch(err => console.error('❌ Error fatal:', err));
