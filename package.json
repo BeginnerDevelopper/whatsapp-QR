@@ -1,10 +1,9 @@
 {
   "name": "whatsapp-bridge",
   "version": "1.0.0",
-  "description": "WhatsApp Bridge project with Baileys fixed for Render with anti-cache patch",
+  "description": "WhatsApp Bridge with Stable MongoDB and Baileys",
   "main": "index.js",
   "scripts": {
-    "postinstall": "node patch-hoek.js",
     "start": "node index.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
@@ -19,7 +18,7 @@
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
     "lru-cache": "^6.0.0",
-    "mongodb": "^7.2.0",
+    "mongodb": "5.9.2",
     "node-fetch": "^2.7.0",
     "pino": "^10.3.1",
     "qrcode": "^1.5.4",
@@ -27,7 +26,8 @@
   },
   "overrides": {
     "@hapi/boom": "9.1.4",
-    "@hapi/hoek": "9.3.0"
+    "@hapi/hoek": "9.3.0",
+    "mongodb": "5.9.2"
   },
   "engines": {
     "node": "20.20.2"

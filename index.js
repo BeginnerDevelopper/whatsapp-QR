@@ -29,7 +29,7 @@ const logger = pino({ level: 'info' });
 // Configuración
 const WEBHOOK_URL = process.env.WEBHOOK_URL || 'https://agentv1-0-citasconcal-com-premium-version.onrender.com/webhook/whatsapp';
 const PORT = process.env.PORT || 3000;
-const MONGODB_URL = process.env.MONGODB_URL; // Asegúrate de tener esto en tu .env o Render
+const MONGODB_URL = process.env.MONGODB_URL || process.env.MONGO_URI; // Asegúrate de tener esto en tu .env o Render
 
 let sock; 
 
@@ -124,7 +124,7 @@ app.post('/send-message', async (req, res) => {
 async function startWhatsAppBot() {
     // 1. Inicializar MongoDB
     if (!MONGODB_URL) {
-        throw new Error("❌ MONGODB_URL no está configurada.");
+        throw new Error("❌ MONGODB_URL no está configurada o no se encontro revisa en tu archivo .env.");
     }
     const client = new MongoClient(MONGODB_URL);
     await client.connect();
