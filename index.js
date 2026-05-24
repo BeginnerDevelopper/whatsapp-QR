@@ -1,37 +1,55 @@
 // ==========================================================================
-// 🛡️ PARCHE DE EMERGENCIA PARA RENDER (AUTO-REPARACIÓN DE @HAPI/HOEK)
+// 🛡️ PARCHE DE EMERGENCIA DE DOBLE ACCIÓN PARA RENDER
+// Repara @hapi/hoek y whatwg-url (dependencia de MongoDB)
 // ==========================================================================
 const fs = require('fs');
 const path = require('path');
 
-function applyEmergencyPatch() {
+function applyEmergencyPatches() {
+    // --- PARCHE 1: @HAPI/HOEK ---
     try {
         const hoekLibPath = path.join(process.cwd(), 'node_modules', '@hapi', 'hoek', 'lib');
         const errorJsPath = path.join(hoekLibPath, 'error.js');
-        const errorJsContent = `'use strict';
-const Stringify = require('./stringify');
-const internals = {};
-module.exports = class extends Error {
-    constructor(args) {
-        const msgs = args
-            .filter((arg) => arg !== '')
-            .map((arg) => {
-                return typeof arg === 'string' ? arg : arg instanceof Error ? arg.message : Stringify(arg);
-            });
-        super(msgs.join(' ') || 'Unknown error');
-        if (typeof Error.captureStackTrace === 'function') {
-            Error.captureStackTrace(this, exports.assert);
-        }
-    }
-};`;
         if (!fs.existsSync(hoekLibPath)) { fs.mkdirSync(hoekLibPath, { recursive: true }); }
         if (!fs.existsSync(errorJsPath)) {
-            console.log('--- 🛠️ PARCHE RENDER: Creando archivo faltante error.js... ---');
-            fs.writeFileSync(errorJsPath, errorJsContent);
+            const content = `'use strict';
+const Stringify = require('./stringify');
+module.exports = class extends Error {
+    constructor(args) {
+        const msgs = args.filter((arg) => arg !== '').map((arg) => typeof arg === 'string' ? arg : arg instanceof Error ? arg.message : Stringify(arg));
+        super(msgs.join(' ') || 'Unknown error');
+        if (typeof Error.captureStackTrace === 'function') { Error.captureStackTrace(this, exports.assert); }
+    }
+};`;
+            console.log('--- 🛠️ PARCHE RENDER: Reparando @hapi/hoek... ---');
+            fs.writeFileSync(errorJsPath, content);
         }
-    } catch (err) { console.error('--- ❌ ERROR EN PARCHE: ---', err); }
+    } catch (e) {}
+
+    // --- PARCHE 2: WHATWG-URL (MongoDB Fix) ---
+    try {
+        const whatwgPath = path.join(process.cwd(), 'node_modules', 'whatwg-url');
+        const indexJsPath = path.join(whatwgPath, 'index.js');
+        const packageJsonPath = path.join(whatwgPath, 'package.json');
+
+        if (!fs.existsSync(whatwgPath)) { fs.mkdirSync(whatwgPath, { recursive: true }); }
+
+        // Asegurar que el package.json de whatwg-url sea válido
+        if (!fs.existsSync(packageJsonPath)) {
+            fs.writeFileSync(packageJsonPath, JSON.stringify({ name: "whatwg-url", main: "index.js", version: "11.0.0" }));
+        }
+
+        // Asegurar que el index.js de whatwg-url exista (redirección a lib/public-api.js)
+        if (!fs.existsSync(indexJsPath)) {
+            console.log('--- 🛠️ PARCHE RENDER: Reparando whatwg-url (MongoDB)... ---');
+            const content = "module.exports = require('./lib/public-api.js');";
+            fs.writeFileSync(indexJsPath, content);
+        }
+    } catch (e) {}
 }
-applyEmergencyPatch();
+
+applyEmergencyPatches();
+
 
 // ==========================================================================
 // 🎤 INICIO DEL CÓDIGO PRINCIPAL
