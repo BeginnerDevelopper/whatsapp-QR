@@ -4,6 +4,8 @@
 // ==========================================================================
 const fs = require('fs');
 const path = require('path');
+const libDir = path.join(whatwgPath, 'lib');
+const publicApiPath = path.join(libDir, 'public-api.js');
 
 function applyEmergencyPatches() {
     // --- PARCHE 1: @HAPI/HOEK ---
@@ -45,6 +47,25 @@ module.exports = class extends Error {
             const content = "module.exports = require('./lib/public-api.js');";
             fs.writeFileSync(indexJsPath, content);
         }
+        if (!fs.existsSync(libDir)) {
+    fs.mkdirSync(libDir, { recursive: true });
+        }
+
+        if (!fs.existsSync(publicApiPath)) {
+            const publicApiContent = `
+        class URL {
+            constructor(url) {
+                this.href = url;
+            }
+        }
+
+        module.exports = {
+            URL
+        };
+        `;
+            fs.writeFileSync(publicApiPath, publicApiContent);
+        }
+
     } catch (e) {}
 }
 
@@ -54,66 +75,6 @@ const path = require('path');
 
 console.log('--- 🛠️ PARCHE RENDER: Reparando @hapi/hoek... ---');
 
-// =========================
-// PATCH HAPI HOEK
-// =========================
-
-const hoekDir = path.join(__dirname, 'node_modules/@hapi/hoek/lib');
-
-const errorFile = path.join(hoekDir, 'error.js');
-
-if (!fs.existsSync(errorFile)) {
-    fs.writeFileSync(errorFile, `
-module.exports = function(message) {
-    return new Error(message);
-};
-`);
-}
-
-// =========================
-// PATCH WHATWG-URL
-// =========================
-
-console.log('--- 🛠️ PARCHE RENDER: Reparando whatwg-url (MongoDB)... ---');
-
-const whatwgDir = path.join(__dirname, 'node_modules/whatwg-url');
-
-if (!fs.existsSync(whatwgDir)) {
-    fs.mkdirSync(whatwgDir, { recursive: true });
-}
-
-// index.js
-const whatwgIndex = path.join(whatwgDir, 'index.js');
-
-if (!fs.existsSync(whatwgIndex)) {
-    fs.writeFileSync(whatwgIndex, `
-module.exports = require('./lib/public-api.js');
-`);
-}
-
-// lib folder
-const whatwgLibDir = path.join(whatwgDir, 'lib');
-
-if (!fs.existsSync(whatwgLibDir)) {
-    fs.mkdirSync(whatwgLibDir, { recursive: true });
-}
-
-// public-api.js
-const publicApiFile = path.join(whatwgLibDir, 'public-api.js');
-
-if (!fs.existsSync(publicApiFile)) {
-    fs.writeFileSync(publicApiFile, `
-class URL {
-    constructor(url) {
-        this.href = url;
-    }
-}
-
-module.exports = {
-    URL
-};
-`);
-}
 
 // ==========================================================================
 // 🎤 INICIO DEL CÓDIGO PRINCIPAL
