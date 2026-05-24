@@ -1,13 +1,13 @@
 // ========================================
-// 🎤 INDEX.JS - SOLUCIÓN FINAL PARA BAILEYS 7.0.0-rc.9
+// 🎤 INDEX.JS - SOLUCIÓN FINAL CON MONGODB ATLAS
 // ========================================
 const { 
     default: makeWASocket, 
-    useMultiFileAuthState, 
     DisconnectReason, 
-    fetchLatestBaileysVersion,
+   fetchLatestBaileysVersion,
     Browsers,
-    downloadMediaMessage
+    downloadMediaMessage,
+    BufferJSON // Importante para manejar datos binarios
 } = require('@whiskeysockets/baileys');
 const qrcodeTerminal = require('qrcode-terminal');
 const fs = require('fs');
@@ -15,7 +15,8 @@ const path = require('path');
 const axios = require('axios');
 const pino = require('pino');
 const express = require('express');
-//const { Boom } = require('@hapi/boom');
+const { MongoClient } = require('mongodb'); // Nuevo: MongoDB
+const useMongoDBAuthState = require('./mongo_auth'); // Nuevo: Adaptador Mongo
 require('dotenv').config();
 
 // Inicializar Express
@@ -27,15 +28,10 @@ const logger = pino({ level: 'info' });
 
 // Configuración
 const WEBHOOK_URL = process.env.WEBHOOK_URL || 'https://agentv1-0-citasconcal-com-premium-version.onrender.com/webhook/whatsapp';
-const AUTH_DIR = path.join(__dirname, 'auth_info_baileys');
 const PORT = process.env.PORT || 3000;
+const MONGODB_URL = process.env.MONGODB_URL; // Asegúrate de tener esto en tu .env o Render
 
-// Crear directorio de autenticación si no existe
-if (!fs.existsSync(AUTH_DIR)) {
-    fs.mkdirSync(AUTH_DIR, { recursive: true });
-}
-
-let sock; // Variable global para el socket
+let sock; 
 
 // ========================================
 // FUNCIÓN PARA DESCARGAR AUDIO
@@ -89,11 +85,8 @@ async function sendAudioToRender(audioBuffer, from, audioMessage) {
 }
 
 // ========================================
-// ENDPOINT PARA ENVIAR MENSAJES (Para Render/n8n)
+// ENDPOINT PARA ENVIAR MENSAJES
 // ========================================
-// ENDPOINT PARA ENVIAR MENSAJES (Limpio y Dinámico) Ajustado para multimedia) 4-30-26
-// ========================================
-
 app.post('/send-message', async (req, res) => {
     const { number, message, to, isImage } = req.body;
     const phoneNumber = to || number;
@@ -106,21 +99,14 @@ app.post('/send-message', async (req, res) => {
         const jid = phoneNumber.includes('@s.whatsapp.net') ? phoneNumber : `${phoneNumber}@s.whatsapp.net`;
         const urlString = String(message).toLowerCase();
 
-        // 1. 🎥 DETECTAR SI ES VIDEO (.mp4)
         if (urlString.includes('.mp4') || urlString.includes('video')) {
             logger.info(`🎥 Enviando VIDEO limpio a ${phoneNumber}...`);
-            await sock.sendMessage(jid, { 
-                video: { url: message } // Enviamos solo el video, sin caption
-            });
+            await sock.sendMessage(jid, { video: { url: message } });
         } 
-        // 2. 📸 DETECTAR SI ES IMAGEN
         else if (isImage === true || isImage === "true" || urlString.includes('.png') || urlString.includes('.jpg')) {
             logger.info(`📸 Enviando IMAGEN limpia a ${phoneNumber}...`);
-            await sock.sendMessage(jid, { 
-                image: { url: message } // Enviamos solo la imagen, sin caption
-            });
+            await sock.sendMessage(jid, { image: { url: message } });
         } 
-        // 3. ✉️ TEXTO NORMAL
         else {
             await sock.sendMessage(jid, { text: message });
         }
@@ -132,12 +118,28 @@ app.post('/send-message', async (req, res) => {
     }
 });
 
-
 // ========================================
-// FUNCIÓN PRINCIPAL DE CONEXIÓN
+// FUNCIÓN PRINCIPAL DE CONEXIÓN (CON MONGODB)
 // ========================================
 async function startWhatsAppBot() {
-    const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
+    // 1. Inicializar MongoDB
+    if (!MONGODB_URL) {
+        throw new Error("❌ MONGODB_URL no está configurada.");
+    }
+    const client = new MongoClient(MONGODB_URL);
+    await client.connect();
+    const db = client.db('whatsapp_bridge'); // Nombre de la DB
+    const collection = db.collection('auth_session'); // Colección de sesión
+
+    // 2. Usar el adaptador de MongoDB
+    const { state, saveCreds } = useMongoDBAuthState(collection);
+    
+    // Cargar credenciales iniciales desde Mongo si existen
+    const credsData = await collection.findOne({ _id: 'creds' });
+    if (credsData) {
+        state.creds = JSON.parse(credsData.data, BufferJSON.reviver);
+    }
+
     const { version } = await fetchLatestBaileysVersion();
 
     sock = makeWASocket({
@@ -148,7 +150,17 @@ async function startWhatsAppBot() {
         logger: pino({ level: 'silent' })
     });
 
-    sock.ev.on('creds.update', saveCreds);
+    // 3. Guardar credenciales en Mongo
+    sock.ev.on('creds.update', async () => {
+        await saveCreds(); // Llamada estándar de Baileys
+        // Forzamos el guardado de 'creds' específicamente en nuestra colección
+        const jsonStr = JSON.stringify(state.creds, BufferJSON.replacer);
+        await collection.updateOne(
+            { _id: 'creds' },
+            { $set: { data: jsonStr } },
+            { upsert: true }
+        );
+    });
 
     sock.ev.on('connection.update', (update) => {
         const { connection, lastDisconnect, qr } = update;
@@ -159,15 +171,15 @@ async function startWhatsAppBot() {
         }
 
         if (connection === 'close') {
-            //const statusCode = new Boom(lastDisconnect?.error)?.output?.statusCode;
-            const statusCode = lastDisconnect?.error?.output?.statusCode; //new 5-23-26
+            const statusCode = lastDisconnect?.error?.output?.statusCode;
             const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
+            console.log(`--- CONEXIÓN CERRADA --- Razón: ${lastDisconnect?.error}`);
             if (shouldReconnect) {
                 console.log('🔄 Reconectando...');
                 setTimeout(startWhatsAppBot, 3000);
             }
         } else if (connection === 'open') {
-            console.log('✅ Conexión con WhatsApp establecida con éxito.');
+            console.log('✅ Conexión con WhatsApp establecida con éxito (Persistente en Mongo).');
         }
     });
 
@@ -204,12 +216,9 @@ async function startWhatsAppBot() {
 // Iniciar Servidor Web
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`\n=================================================`);
-    console.log(`🚀 SERVIDOR WEB BAILEYS INICIADO`);
+    console.log(`🚀 SERVIDOR WEB BAILEYS + MONGODB INICIADO`);
     console.log(`📡 Puerto: ${PORT}`);
-    console.log(`🔗 URL de envío: http://localhost:${PORT}/send-message`);
     console.log(`=================================================\n`);
-}).on('error', (err) => {
-    console.error('❌ ERROR AL INICIAR EL SERVIDOR WEB:', err.message);
 });
 
 // Iniciar Bot
