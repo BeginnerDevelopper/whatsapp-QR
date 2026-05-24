@@ -13,10 +13,9 @@
   "dependencies": {
     "@hapi/boom": "^10.0.1",
     "axios": "^1.15.2",
-    "@whiskeysockets/baileys": "github:WhiskeySockets/Baileys#48b0cb4",
+    "@whiskeysockets/baileys": "6.6.0",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
-    "libsignal": "file:patched/libsignal-node",
     "lru-cache": "^10.2.0",
     "mongodb": "^7.2.0",
     "node-fetch": "^2.7.0",
@@ -36,4 +35,5 @@
   "engines": {
     "node": "20.x"
   }
+  
 }
