@@ -16,21 +16,11 @@
     "@whiskeysockets/baileys": "6.6.0",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
-    "lru-cache": "^10.2.0",
     "mongodb": "^7.2.0",
     "node-fetch": "^2.7.0",
     "pino": "^10.3.1",
-    "protobufjs": "7.5.5",
     "qrcode": "^1.5.4",
     "qrcode-terminal": "^0.12.0"
-  },
-  "overrides": {
-    "@whiskeysockets/libsignal-node": {
-      "protobufjs": "7.5.5"
-    }
-  },
-  "devDependencies": {
-    "patch-package": "^8.0.1"
   },
   "engines": {
     "node": "20.x"
