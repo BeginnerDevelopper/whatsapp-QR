@@ -140,6 +140,7 @@ async function startWhatsAppBot() {
     });
 }
 
+
 // Iniciar Servidor Web PRIMERO para que Render esté feliz
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`🚀 Servidor web activo en puerto ${PORT}`);
